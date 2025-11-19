@@ -1,0 +1,147 @@
+name: Reusable Config Sync
+
+on:
+    workflow_call:
+        inputs:
+            config_repo:
+                required: true
+                type: string
+                description: "Config repository (e.g., nuniesmith/fks_config)"
+            config_files:
+                required: true
+                type: string
+                description: "Space-separated list of config files to sync (e.g., 'fks-config-base.yaml tracing.yaml')"
+            target_repos:
+                required: true
+                type: string
+                description: "Comma-separated list of target repos (e.g., 'fks_ai,fks_api,fks_web')"
+            target_path:
+                required: false
+                type: string
+                default: "config/"
+                description: "Target path in each repo for config files"
+            create_pr:
+                required: false
+                type: boolean
+                default: true
+                description: "Create PR instead of direct push"
+            branch_name:
+                required: false
+                type: string
+                default: "config-sync"
+                description: "Branch name for config sync"
+        secrets:
+            github_token:
+                required: true
+                description: "GitHub token with repo access"
+
+jobs:
+    sync-config:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
+
+        steps:
+            - name: Checkout config repository
+              uses: actions/checkout@v4
+              with:
+                  repository: ${{ inputs.config_repo }}
+                  token: ${{ secrets.github_token }}
+                  path: config-repo
+
+            - name: Setup git
+              run: |
+                  git config --global user.name "GitHub Actions"
+                  git config --global user.email "actions@github.com"
+
+            - name: Sync configs to target repositories
+              env:
+                  GH_TOKEN: ${{ secrets.github_token }}
+              run: |
+                  # Parse target repos
+                  IFS=',' read -ra REPOS <<< "${{ inputs.target_repos }}"
+
+                  # Parse config files
+                  IFS=' ' read -ra FILES <<< "${{ inputs.config_files }}"
+
+                  for repo in "${REPOS[@]}"; do
+                    repo=$(echo "$repo" | xargs)  # Trim whitespace
+                    echo "==> Processing repository: $repo"
+                    
+                    # Clone target repo
+                    target_dir="target-repos/${repo}"
+                    git clone "https://x-access-token:${{ secrets.github_token }}@github.com/${{ github.repository_owner }}/${repo}.git" "$target_dir" || {
+                      echo "Failed to clone ${repo}, skipping..."
+                      continue
+                    }
+                    
+                    cd "$target_dir"
+                    
+                    # Create or switch to sync branch
+                    if [ "${{ inputs.create_pr }}" = "true" ]; then
+                      git checkout -b "${{ inputs.branch_name }}" 2>/dev/null || git checkout "${{ inputs.branch_name }}"
+                    fi
+                    
+                    # Create target directory if it doesn't exist
+                    mkdir -p "${{ inputs.target_path }}"
+                    
+                    # Copy config files
+                    changes_made=false
+                    for file in "${FILES[@]}"; do
+                      file=$(echo "$file" | xargs)  # Trim whitespace
+                      source_file="../../config-repo/${file}"
+                      
+                      if [ -f "$source_file" ]; then
+                        target_file="${{ inputs.target_path }}/${file}"
+                        
+                        # Check if file has changed
+                        if ! cmp -s "$source_file" "$target_file"; then
+                          echo "Copying ${file} to ${target_file}"
+                          cp "$source_file" "$target_file"
+                          git add "$target_file"
+                          changes_made=true
+                        else
+                          echo "No changes to ${file}"
+                        fi
+                      else
+                        echo "Warning: Source file ${file} not found"
+                      fi
+                    done
+                    
+                    # Commit and push if changes were made
+                    if [ "$changes_made" = "true" ]; then
+                      commit_msg="chore: sync config files from config repo"$'\n\n'"Files synced: ${{ inputs.config_files }}"$'\n'"Source: ${{ inputs.config_repo }}@${{ github.sha }}"
+                      git commit -m "$commit_msg" || true
+                      
+                      if [ "${{ inputs.create_pr }}" = "true" ]; then
+                        git push origin "${{ inputs.branch_name }}" --force
+                        
+                        # Create PR using GitHub CLI
+                        pr_body="Automated config sync from \`${{ inputs.config_repo }}\`"$'\n\n'"**Files updated:**"$'\n'"$(printf '- \`%s\`\n' "${FILES[@]}")"$'\n\n'"**Source commit:** ${{ github.sha }}"$'\n\n'"This PR was automatically created by the config sync workflow."
+                        gh pr create --title "chore: sync config files" --body "$pr_body" --base main --head "${{ inputs.branch_name }}" || echo "PR might already exist"
+                      else
+                        git push origin main
+                      fi
+                      
+                      echo "✓ Synced configs to ${repo}"
+                    else
+                      echo "✓ No changes needed for ${repo}"
+                    fi
+                    
+                    cd ../..
+                  done
+
+            - name: Summary
+              run: |
+                  echo "### Config Sync Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Config Repository:** \`${{ inputs.config_repo }}\`" >> $GITHUB_STEP_SUMMARY
+                  echo "**Files Synced:** \`${{ inputs.config_files }}\`" >> $GITHUB_STEP_SUMMARY
+                  echo "**Target Repos:** \`${{ inputs.target_repos }}\`" >> $GITHUB_STEP_SUMMARY
+                  echo "**Target Path:** \`${{ inputs.target_path }}\`" >> $GITHUB_STEP_SUMMARY
+                  if [ "${{ inputs.create_pr }}" = "true" ]; then
+                    echo "**Action:** Created/Updated PRs" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "**Action:** Direct push to main" >> $GITHUB_STEP_SUMMARY
+                  fi

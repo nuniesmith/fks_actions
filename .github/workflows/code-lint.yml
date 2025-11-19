@@ -1,0 +1,161 @@
+name: Reusable Code Linting
+
+on:
+    workflow_call:
+        inputs:
+            language:
+                required: true
+                type: string
+                description: "Programming language (python or rust)"
+            python_version:
+                required: false
+                type: string
+                default: "3.12"
+                description: "Python version (for Python projects)"
+            rust_toolchain:
+                required: false
+                type: string
+                default: "stable"
+                description: "Rust toolchain (for Rust projects)"
+            source_paths:
+                required: false
+                type: string
+                default: "src/"
+                description: "Space-separated source paths to lint"
+            has_dev_requirements:
+                required: false
+                type: boolean
+                default: true
+                description: "Whether requirements.dev.txt exists (Python)"
+            run_mypy:
+                required: false
+                type: boolean
+                default: true
+                description: "Run mypy type checking (Python)"
+            auto_fix:
+                required: false
+                type: boolean
+                default: false
+                description: "Auto-fix linting issues and commit"
+
+jobs:
+    lint-python:
+        if: inputs.language == 'python'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python_version }}
+
+            - name: Cache pip dependencies
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/pip
+                  key: ${{ runner.os }}-pip-lint-${{ hashFiles('**/requirements*.txt') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pip-lint-
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install ruff || true
+                  if [ "${{ inputs.run_mypy }}" = "true" ]; then
+                    pip install mypy || true
+                  fi
+                  if [ -f requirements.txt ]; then
+                    pip install -r requirements.txt || true
+                  fi
+                  if [ "${{ inputs.has_dev_requirements }}" = "true" ] && [ -f requirements.dev.txt ]; then
+                    pip install -r requirements.dev.txt || true
+                  fi
+
+            - name: Lint with ruff (check)
+              run: |
+                  ruff check ${{ inputs.source_paths }} --output-format github
+              continue-on-error: true
+
+            - name: Lint with ruff (format check)
+              run: |
+                  ruff format ${{ inputs.source_paths }} --check
+              continue-on-error: true
+
+            - name: Auto-fix with ruff
+              if: inputs.auto_fix
+              run: |
+                  ruff check ${{ inputs.source_paths }} --fix || true
+                  ruff format ${{ inputs.source_paths }} || true
+              continue-on-error: true
+
+            - name: Type check with mypy
+              if: inputs.run_mypy
+              run: |
+                  mypy ${{ inputs.source_paths }} || true
+              continue-on-error: true
+
+            - name: Commit fixes
+              if: inputs.auto_fix && github.event_name == 'push'
+              uses: stefanzweifel/git-auto-commit-action@v5
+              with:
+                  commit_message: "style: auto-fix code linting issues"
+                  file_pattern: "*.py"
+
+    lint-rust:
+        if: inputs.language == 'rust'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Set up Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: ${{ inputs.rust_toolchain }}
+                  components: rustfmt, clippy
+
+            - name: Cache cargo dependencies
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      target/
+                  key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-cargo-lint-
+
+            - name: Check formatting with rustfmt
+              run: cargo fmt --all -- --check
+              continue-on-error: true
+
+            - name: Auto-fix formatting with rustfmt
+              if: inputs.auto_fix
+              run: cargo fmt --all
+              continue-on-error: true
+
+            - name: Lint with Clippy
+              run: |
+                  cargo clippy --all-features --all-targets -- -D warnings
+              continue-on-error: true
+
+            - name: Commit fixes
+              if: inputs.auto_fix && github.event_name == 'push'
+              uses: stefanzweifel/git-auto-commit-action@v5
+              with:
+                  commit_message: "style: auto-fix code formatting issues"
+                  file_pattern: "*.rs"
