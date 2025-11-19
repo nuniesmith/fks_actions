@@ -1,177 +1,177 @@
 name: Build Docker Base Images
 
 on:
-  workflow_call:
-    inputs:
-      docker_repo:
-        required: false
-        type: string
-        default: "nuniesmith/fks"
-        description: "Docker repository name"
-      build_cpu:
-        required: false
-        type: boolean
-        default: true
-        description: "Build CPU base image"
-      build_ml:
-        required: false
-        type: boolean
-        default: true
-        description: "Build ML base image"
-      build_gpu:
-        required: false
-        type: boolean
-        default: true
-        description: "Build GPU base image"
-    secrets:
-      DOCKER_TOKEN:
-        required: true
-        description: "Docker Hub access token"
+    workflow_call:
+        inputs:
+            docker_repo:
+                required: false
+                type: string
+                default: "nuniesmith/fks"
+                description: "Docker repository name"
+            build_cpu:
+                required: false
+                type: boolean
+                default: true
+                description: "Build CPU base image"
+            build_ml:
+                required: false
+                type: boolean
+                default: true
+                description: "Build ML base image"
+            build_gpu:
+                required: false
+                type: boolean
+                default: true
+                description: "Build GPU base image"
+        secrets:
+            DOCKER_TOKEN:
+                required: true
+                description: "Docker Hub access token"
 
 env:
-  IMAGE_NAME: ${{ inputs.docker_repo }}
-  DOCKER_USERNAME: nuniesmith
+    IMAGE_NAME: ${{ inputs.docker_repo }}
+    DOCKER_USERNAME: nuniesmith
 
 jobs:
-  build-cpu-base:
-    if: inputs.build_cpu
-    runs-on: ubuntu-latest
-    name: Build CPU Base (docker)
+    build-cpu-base:
+        if: inputs.build_cpu
+        runs-on: ubuntu-latest
+        name: Build CPU Base (docker)
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
 
-      - name: Log in to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
+            - name: Log in to DockerHub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ env.DOCKER_USERNAME }}
+                  password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push CPU base image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.builder
-          push: true
-          tags: ${{ env.IMAGE_NAME }}:docker,${{ env.IMAGE_NAME }}:docker-latest
-          cache-from: type=gha,scope=cpu-base
-          cache-to: type=gha,mode=max,scope=cpu-base
-          labels: |
-            org.opencontainers.image.title=fks-docker
-            org.opencontainers.image.description=FKS Docker CPU Base Image with TA-Lib and build tools
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            - name: Build and push CPU base image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: Dockerfile.builder
+                  push: true
+                  tags: ${{ env.IMAGE_NAME }}:docker,${{ env.IMAGE_NAME }}:docker-latest
+                  cache-from: type=gha,scope=cpu-base
+                  cache-to: type=gha,mode=max,scope=cpu-base
+                  labels: |
+                      org.opencontainers.image.title=fks-docker
+                      org.opencontainers.image.description=FKS Docker CPU Base Image with TA-Lib and build tools
+                      org.opencontainers.image.source=https://github.com/${{ github.repository }}
+                      org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: CPU base image info
-        run: |
-          echo "### ✅ CPU Base Image Built" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_NAME }}:docker\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_NAME }}:docker-latest\`" >> $GITHUB_STEP_SUMMARY
+            - name: CPU base image info
+              run: |
+                  echo "### ✅ CPU Base Image Built" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`${{ env.IMAGE_NAME }}:docker\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`${{ env.IMAGE_NAME }}:docker-latest\`" >> $GITHUB_STEP_SUMMARY
 
-  build-ml-base:
-    if: inputs.build_ml
-    runs-on: ubuntu-latest
-    name: Build ML Base (docker-ml)
-    needs: build-cpu-base
-    # Run if CPU build succeeded or was skipped
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    build-ml-base:
+        if: inputs.build_ml
+        runs-on: ubuntu-latest
+        name: Build ML Base (docker-ml)
+        needs: build-cpu-base
+        # Run if CPU build succeeded or was skipped
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-      - name: Log in to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
 
-      - name: Pull CPU base image
-        run: docker pull ${{ env.IMAGE_NAME }}:docker || true
+            - name: Log in to DockerHub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ env.DOCKER_USERNAME }}
+                  password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: Build and push ML base image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.ml
-          push: true
-          tags: ${{ env.IMAGE_NAME }}:docker-ml,${{ env.IMAGE_NAME }}:docker-ml-latest
-          cache-from: type=gha,scope=ml-base
-          cache-to: type=gha,mode=max,scope=ml-base
-          labels: |
-            org.opencontainers.image.title=fks-docker-ml
-            org.opencontainers.image.description=FKS Docker ML Base Image with LangChain, ChromaDB, and sentence-transformers
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            - name: Pull CPU base image
+              run: docker pull ${{ env.IMAGE_NAME }}:docker || true
 
-      - name: ML base image info
-        run: |
-          echo "### ✅ ML Base Image Built" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_NAME }}:docker-ml\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_NAME }}:docker-ml-latest\`" >> $GITHUB_STEP_SUMMARY
+            - name: Build and push ML base image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: Dockerfile.ml
+                  push: true
+                  tags: ${{ env.IMAGE_NAME }}:docker-ml,${{ env.IMAGE_NAME }}:docker-ml-latest
+                  cache-from: type=gha,scope=ml-base
+                  cache-to: type=gha,mode=max,scope=ml-base
+                  labels: |
+                      org.opencontainers.image.title=fks-docker-ml
+                      org.opencontainers.image.description=FKS Docker ML Base Image with LangChain, ChromaDB, and sentence-transformers
+                      org.opencontainers.image.source=https://github.com/${{ github.repository }}
+                      org.opencontainers.image.revision=${{ github.sha }}
 
-  build-gpu-base:
-    if: inputs.build_gpu
-    runs-on: ubuntu-latest
-    name: Build GPU Base (docker-gpu)
-    needs: build-ml-base
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+            - name: ML base image info
+              run: |
+                  echo "### ✅ ML Base Image Built" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`${{ env.IMAGE_NAME }}:docker-ml\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`${{ env.IMAGE_NAME }}:docker-ml-latest\`" >> $GITHUB_STEP_SUMMARY
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    build-gpu-base:
+        if: inputs.build_gpu
+        runs-on: ubuntu-latest
+        name: Build GPU Base (docker-gpu)
+        needs: build-ml-base
 
-      - name: Log in to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-      - name: Pull ML base image
-        run: docker pull ${{ env.IMAGE_NAME }}:docker-ml || true
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
 
-      - name: Build and push GPU base image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.gpu
-          push: true
-          tags: ${{ env.IMAGE_NAME }}:docker-gpu,${{ env.IMAGE_NAME }}:docker-gpu-latest
-          cache-from: type=gha,scope=gpu-base
-          cache-to: type=gha,mode=max,scope=gpu-base
-          labels: |
-            org.opencontainers.image.title=fks-docker-gpu
-            org.opencontainers.image.description=FKS Docker GPU Base Image with PyTorch, Transformers, and training libraries
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            - name: Log in to DockerHub
+              uses: docker/login-action@v3
+              with:
+                  username: ${{ env.DOCKER_USERNAME }}
+                  password: ${{ secrets.DOCKER_TOKEN }}
 
-      - name: GPU base image info
-        run: |
-          echo "### ✅ GPU Base Image Built" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_NAME }}:docker-gpu\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.IMAGE_NAME }}:docker-gpu-latest\`" >> $GITHUB_STEP_SUMMARY
+            - name: Pull ML base image
+              run: docker pull ${{ env.IMAGE_NAME }}:docker-ml || true
 
-  build-summary:
-    runs-on: ubuntu-latest
-    name: Build Summary
-    needs: [build-cpu-base, build-ml-base, build-gpu-base]
-    if: always()
+            - name: Build and push GPU base image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: Dockerfile.gpu
+                  push: true
+                  tags: ${{ env.IMAGE_NAME }}:docker-gpu,${{ env.IMAGE_NAME }}:docker-gpu-latest
+                  cache-from: type=gha,scope=gpu-base
+                  cache-to: type=gha,mode=max,scope=gpu-base
+                  labels: |
+                      org.opencontainers.image.title=fks-docker-gpu
+                      org.opencontainers.image.description=FKS Docker GPU Base Image with PyTorch, Transformers, and training libraries
+                      org.opencontainers.image.source=https://github.com/${{ github.repository }}
+                      org.opencontainers.image.revision=${{ github.sha }}
 
-    steps:
-      - name: Build summary
-        run: |
-          echo "### 📦 Base Image Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| CPU Base | ${{ needs.build-cpu-base.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| ML Base | ${{ needs.build-ml-base.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| GPU Base | ${{ needs.build-gpu-base.result }} |" >> $GITHUB_STEP_SUMMARY
+            - name: GPU base image info
+              run: |
+                  echo "### ✅ GPU Base Image Built" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`${{ env.IMAGE_NAME }}:docker-gpu\`" >> $GITHUB_STEP_SUMMARY
+                  echo "- \`${{ env.IMAGE_NAME }}:docker-gpu-latest\`" >> $GITHUB_STEP_SUMMARY
+
+    build-summary:
+        runs-on: ubuntu-latest
+        name: Build Summary
+        needs: [build-cpu-base, build-ml-base, build-gpu-base]
+        if: always()
+
+        steps:
+            - name: Build summary
+              run: |
+                  echo "### 📦 Base Image Build Summary" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "| Image | Status |" >> $GITHUB_STEP_SUMMARY
+                  echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+                  echo "| CPU Base | ${{ needs.build-cpu-base.result }} |" >> $GITHUB_STEP_SUMMARY
+                  echo "| ML Base | ${{ needs.build-ml-base.result }} |" >> $GITHUB_STEP_SUMMARY
+                  echo "| GPU Base | ${{ needs.build-gpu-base.result }} |" >> $GITHUB_STEP_SUMMARY
