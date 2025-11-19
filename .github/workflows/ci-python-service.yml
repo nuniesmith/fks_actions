@@ -56,6 +56,11 @@ on:
         type: string
         default: "./Dockerfile"
         description: "Path to Dockerfile (e.g., ./Dockerfile or ./docker/Dockerfile)"
+      cleanup_disk:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to clean up disk space before building (frees ~14GB)"
     secrets:
       docker_token:
         required: true
@@ -69,6 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Free up disk space
+        if: inputs.cleanup_disk
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
           sudo docker system prune -af || true
