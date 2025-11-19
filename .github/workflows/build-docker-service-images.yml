@@ -1,73 +1,73 @@
 name: Build and Push Service Images (Reusable)
 
 on:
-  workflow_call:
-    inputs:
-      docker_repo:
-        description: "Docker repository (e.g., user/repo)"
-        required: true
-        type: string
-      service:
-        description: "Service to build (empty builds all)"
-        required: false
-        default: ""
-        type: string
-      push_images:
-        description: "Push built images to registry"
-        required: false
-        default: true
-        type: boolean
-      build_script:
-        description: "Relative path to build script"
-        required: false
-        default: "build-all.sh"
-        type: string
-    secrets:
-      DOCKER_TOKEN:
-        required: true
+    workflow_call:
+        inputs:
+            docker_repo:
+                description: "Docker repository (e.g., user/repo)"
+                required: true
+                type: string
+            service:
+                description: "Service to build (empty builds all)"
+                required: false
+                default: ""
+                type: string
+            push_images:
+                description: "Push built images to registry"
+                required: false
+                default: true
+                type: boolean
+            build_script:
+                description: "Relative path to build script"
+                required: false
+                default: "build-all.sh"
+                type: string
+        secrets:
+            DOCKER_TOKEN:
+                required: true
 
 jobs:
-  build-services:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    build-services:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
 
-      - name: Log in to DockerHub
-        if: inputs.push_images == true
-        env:
-          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-          DOCKER_REPO: ${{ inputs.docker_repo }}
-        run: |
-          USERNAME="${DOCKER_REPO%%/*}"
-          echo "$DOCKER_TOKEN" | docker login -u "$USERNAME" --password-stdin
+            - name: Log in to DockerHub
+              if: inputs.push_images == true
+              env:
+                  DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+                  DOCKER_REPO: ${{ inputs.docker_repo }}
+              run: |
+                  USERNAME="${DOCKER_REPO%%/*}"
+                  echo "$DOCKER_TOKEN" | docker login -u "$USERNAME" --password-stdin
 
-      - name: Pull base images
-        run: |
-          docker pull ${{ inputs.docker_repo }}:docker || echo "CPU base not found"
-          docker pull ${{ inputs.docker_repo }}:docker-ml || echo "ML base not found"
-          docker pull ${{ inputs.docker_repo }}:docker-gpu || echo "GPU base not found"
+            - name: Pull base images
+              run: |
+                  docker pull ${{ inputs.docker_repo }}:docker || echo "CPU base not found"
+                  docker pull ${{ inputs.docker_repo }}:docker-ml || echo "ML base not found"
+                  docker pull ${{ inputs.docker_repo }}:docker-gpu || echo "GPU base not found"
 
-      - name: Ensure build script is executable
-        run: chmod +x "${{ inputs.build_script }}"
+            - name: Ensure build script is executable
+              run: chmod +x "${{ inputs.build_script }}"
 
-      - name: Build and push services
-        env:
-          PUSH_TO_HUB: ${{ inputs.push_images }}
-          BUILD_BASE: "false"
-          SERVICE_FILTER: ${{ inputs.service }}
-        run: |
-          if [ -n "$SERVICE_FILTER" ]; then
-            "${{ inputs.build_script }}" --service "$SERVICE_FILTER"
-          else
-            "${{ inputs.build_script }}"
-          fi
+            - name: Build and push services
+              env:
+                  PUSH_TO_HUB: ${{ inputs.push_images }}
+                  BUILD_BASE: "false"
+                  SERVICE_FILTER: ${{ inputs.service }}
+              run: |
+                  if [ -n "$SERVICE_FILTER" ]; then
+                    "${{ inputs.build_script }}" --service "$SERVICE_FILTER"
+                  else
+                    "${{ inputs.build_script }}"
+                  fi
 
-      - name: Build summary
-        if: always()
-        run: |
-          echo "=== Build Summary ==="
-          docker images | grep "${{ inputs.docker_repo }}" || true
+            - name: Build summary
+              if: always()
+              run: |
+                  echo "=== Build Summary ==="
+                  docker images | grep "${{ inputs.docker_repo }}" || true
