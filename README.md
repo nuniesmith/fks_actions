@@ -112,6 +112,145 @@ Optional secrets:
 - nginx (ports 80, 443)
 - tailscale (no exposed port)
 
+### 3. Infrastructure Service CI (`ci-infra-service.yml`)
+
+Reusable workflow for infrastructure services (nginx, tailscale, etc.) with:
+- Docker image build and push
+- Optional configuration validation
+- Simplified workflow without code testing
+
+**Usage Example:**
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  ci:
+    uses: nuniesmith/fks_actions/.github/workflows/ci-infra-service.yml@main
+    with:
+      service_name: nginx
+      service_port: 80
+      validate_config: false  # optional
+    secrets:
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+```
+
+### 4. Build Docker Base Images (`build-docker-base-images.yml`)
+
+Reusable workflow for building Docker base images in sequence:
+- CPU base (`docker-latest`)
+- ML base (`docker-ml-latest`) 
+- GPU base (`docker-gpu-latest`)
+
+**Usage Example:**
+
+```yaml
+name: Build Base Images
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: nuniesmith/fks_actions/.github/workflows/build-docker-base-images.yml@main
+    with:
+      docker_repo: nuniesmith/fks
+      build_cpu: true
+      build_ml: true
+      build_gpu: true
+    secrets:
+      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+```
+
+### 5. Documentation Lint (`docs-lint.yml`)
+
+Reusable workflow for linting Markdown documentation:
+- Markdownlint with auto-fix
+- Custom configuration support
+- Auto-commit fixes on push
+
+**Usage Example:**
+
+```yaml
+name: Lint Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', '**/*.md']
+  pull_request:
+    paths: ['docs/**', '**/*.md']
+
+jobs:
+  lint:
+    uses: nuniesmith/fks_actions/.github/workflows/docs-lint.yml@main
+    with:
+      docs_path: "**/*.md"
+      auto_fix: true
+      config_file: ".markdownlint.json"
+```
+
+### 6. Documentation Build (`docs-build.yml`)
+
+Reusable workflow for building and deploying MkDocs sites:
+- MkDocs Material theme
+- Mermaid diagram support
+- Automatic GitHub Pages deployment
+
+**Usage Example:**
+
+```yaml
+name: Build Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'mkdocs.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: nuniesmith/fks_actions/.github/workflows/docs-build.yml@main
+    with:
+      python_version: "3.12"
+      mkdocs_config: "mkdocs.yml"
+      deploy_to_pages: true
+```
+
+### 7. Documentation Audit (`docs-audit.yml`)
+
+Reusable workflow for auditing documentation quality:
+- Custom audit script support
+- Basic metrics (file count, empty files)
+- PR comment with results
+
+**Usage Example:**
+
+```yaml
+name: Audit Docs
+
+on:
+  pull_request:
+    paths: ['docs/**']
+  workflow_dispatch:
+
+jobs:
+  audit:
+    uses: nuniesmith/fks_actions/.github/workflows/docs-audit.yml@main
+    with:
+      docs_dir: "docs"
+      audit_script: "scripts/docs/audit_files.py"
+      post_pr_comment: true
+```
+
 ## Workflow Features
 
 - **Concurrency control**: Prevents duplicate workflow runs

@@ -1,0 +1,75 @@
+name: Documentation Linting
+
+on:
+  workflow_call:
+    inputs:
+      docs_path:
+        required: false
+        type: string
+        default: "**/*.md"
+        description: "Path to markdown files to lint"
+      auto_fix:
+        required: false
+        type: boolean
+        default: true
+        description: "Automatically fix linting issues"
+      config_file:
+        required: false
+        type: string
+        default: ".markdownlint.json"
+        description: "Path to markdownlint config file"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      
+      - name: Install Markdownlint
+        run: npm install -g markdownlint-cli
+      
+      - name: Lint and fix Markdown files
+        if: inputs.auto_fix
+        run: |
+          if [ -f "${{ inputs.config_file }}" ]; then
+            markdownlint "${{ inputs.docs_path }}" --config ${{ inputs.config_file }} --fix || true
+          else
+            markdownlint "${{ inputs.docs_path }}" --fix || true
+          fi
+        continue-on-error: true
+      
+      - name: Check for linting errors
+        id: lint_check
+        run: |
+          if [ -f "${{ inputs.config_file }}" ]; then
+            markdownlint "${{ inputs.docs_path }}" --config ${{ inputs.config_file }} > lint-output.txt 2>&1 || echo "errors=true" >> $GITHUB_OUTPUT
+          else
+            markdownlint "${{ inputs.docs_path }}" > lint-output.txt 2>&1 || echo "errors=true" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ -s lint-output.txt ]; then
+            echo "### ⚠️  Markdown Linting Issues" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat lint-output.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ✅ No Markdown Linting Issues" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+      
+      - name: Commit fixes
+        if: inputs.auto_fix && github.event_name == 'push'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'docs: auto-fix markdown linting issues'
+          file_pattern: '**/*.md'
