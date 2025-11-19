@@ -1,0 +1,148 @@
+name: Reusable Rust Service CI
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+        description: 'Service name (e.g., auth, execution, main, meta)'
+      service_port:
+        required: true
+        type: string
+        description: 'Port the service runs on (e.g., 8009)'
+      rust_toolchain:
+        required: false
+        type: string
+        default: 'stable'
+        description: 'Rust toolchain version'
+      docker_repo:
+        required: false
+        type: string
+        default: 'nuniesmith/fks'
+        description: 'Docker repository name'
+      needs_openssl:
+        required: false
+        type: boolean
+        default: true
+        description: 'Whether to install libssl-dev'
+    secrets:
+      docker_token:
+        required: true
+        description: 'Docker Hub access token'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ---- Rust tests ----
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ inputs.rust_toolchain }}
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ inputs.service_name }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ inputs.service_name }}-
+
+      - name: Install system dependencies
+        if: inputs.needs_openssl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Run Rust tests
+        run: cargo test --all-features || true
+        continue-on-error: true
+
+      - name: Run Clippy
+        run: cargo clippy --all-features -- -D warnings || true
+        continue-on-error: true
+
+      # ---- Docker build and test ----
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.docker_repo }}
+          tags: |
+            type=raw,value=${{ inputs.service_name }}-latest,enable={{is_default_branch}}
+            type=sha,prefix=${{ inputs.service_name }}-,format=short
+            type=ref,event=branch,prefix=${{ inputs.service_name }}-
+            type=semver,pattern={{version}},prefix=${{ inputs.service_name }}-
+            type=semver,pattern={{major}}.{{minor}},prefix=${{ inputs.service_name }}-
+            type=semver,pattern={{major}},prefix=${{ inputs.service_name }}-
+
+      - name: Build Docker image (test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ inputs.service_name }}:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image via health endpoint
+        run: |
+          set +e
+          docker run -d --rm --name ${{ inputs.service_name }}_test \
+            -p ${{ inputs.service_port }}:${{ inputs.service_port }} \
+            ${{ inputs.service_name }}:ci-test
+          
+          echo "Waiting for service to start..."
+          for i in {1..30}; do
+            sleep 2
+            if curl -fsS http://localhost:${{ inputs.service_port }}/health >/dev/null 2>&1; then
+              echo "✓ Service is healthy"
+              HEALTHY=true
+              break
+            fi
+            echo "Attempt $i/30: not ready"
+          done
+          
+          if [ "${HEALTHY}" != "true" ]; then
+            echo "✗ Service failed health check"
+            docker logs ${{ inputs.service_name }}_test || true
+            exit 1
+          fi
+          
+          docker stop ${{ inputs.service_name }}_test || true
+
+      # ---- Push only on main/tag push ----
+      - name: Log in to DockerHub
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/login-action@v3
+        with:
+          username: nuniesmith
+          password: ${{ secrets.docker_token }}
+
+      - name: Build and push Docker image
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image digest
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        run: echo "Pushed with digest ${{ steps.meta.outputs.digest }}"
