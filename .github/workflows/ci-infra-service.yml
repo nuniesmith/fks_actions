@@ -21,6 +21,11 @@ on:
                 type: string
                 default: ""
                 description: "Command to run for configuration validation"
+            dockerfile_path:
+                required: false
+                type: string
+                default: "./Dockerfile"
+                description: "Path to Dockerfile (e.g., ./Dockerfile or ./docker/Dockerfile)"
         secrets:
             DOCKER_TOKEN:
                 required: true
@@ -76,6 +81,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
+                  file: ${{ inputs.dockerfile_path }}
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
