@@ -58,6 +58,36 @@ jobs:
                     pip install ${{ inputs.additional_plugins }}
                   fi
 
+            - name: Prepare docs directory if missing
+              run: |
+                  # Determine docs_dir from mkdocs.yml (simple parse) or default to 'docs'
+                  if [ -f "${{ inputs.mkdocs_config }}" ]; then
+                    DOCS_DIR=$(grep -E '^docs_dir:' "${{ inputs.mkdocs_config }}" | awk '{print $2}' | tr -d '"' || true)
+                  fi
+                  if [ -z "$DOCS_DIR" ]; then DOCS_DIR="docs"; fi
+                  echo "Using docs_dir=$DOCS_DIR"
+
+                  if [ ! -d "$DOCS_DIR" ]; then
+                    echo "docs_dir '$DOCS_DIR' not found; creating and copying markdown files as a fallback"
+                    mkdir -p "$DOCS_DIR"
+                    if command -v rsync >/dev/null 2>&1; then
+                      rsync -a --prune-empty-dirs \
+                        --include '*/' --include '*.md' \
+                        --exclude '.git/***' --exclude '.github/***' \
+                        --exclude 'site/***' --exclude "$DOCS_DIR/***" \
+                        ./ "$DOCS_DIR"/
+                    else
+                      echo "rsync not found; using find/xargs fallback"
+                      find . \
+                        -path "./$DOCS_DIR" -prune -o \
+                        -path "./.git" -prune -o \
+                        -path "./.github" -prune -o \
+                        -path "./site" -prune -o \
+                        -name "*.md" -type f -print0 | \
+                      xargs -0 -I{} bash -c 'dst="$DOCS_DIR/$(dirname "{}" | sed "s|^./||")"; mkdir -p "$dst"; cp "{}" "$dst/"'
+                    fi
+                  fi
+
             - name: Build documentation site
               run: |
                   if [ -f "${{ inputs.mkdocs_config }}" ]; then
@@ -73,6 +103,8 @@ jobs:
             - name: Setup Pages
               if: inputs.deploy_to_pages
               uses: actions/configure-pages@v4
+              with:
+                  enablement: true
 
             - name: Upload artifact
               if: inputs.deploy_to_pages
