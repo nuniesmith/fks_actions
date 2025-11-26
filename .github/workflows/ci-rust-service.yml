@@ -127,15 +127,15 @@ jobs:
           cargo tarpaulin --out Xml --output-dir . --all-features || true
         continue-on-error: true
 
-      - name: Upload coverage to Codecov
+      - name: Upload coverage reports to Codecov
         if: inputs.run_coverage && hashFiles('cobertura.xml') != ''
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.codecov_token }}
           file: ./cobertura.xml
           flags: ${{ inputs.service_name }}
           name: ${{ inputs.service_name }}-coverage
           fail_ci_if_error: false
-          token: ${{ secrets.codecov_token }}
         continue-on-error: true
 
       # ---- Docker build and test ----

@@ -126,15 +126,15 @@ jobs:
             echo "No tests found, skipping"
           fi
 
-      - name: Upload coverage to Codecov
+      - name: Upload coverage reports to Codecov
         if: hashFiles('coverage.xml') != ''
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.codecov_token }}
           file: ./coverage.xml
           flags: ${{ inputs.service_name }}
           name: ${{ inputs.service_name }}-coverage
           fail_ci_if_error: false
-          token: ${{ secrets.codecov_token }}
         continue-on-error: true
 
       # ---- Docker build and test ----
