@@ -55,7 +55,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: Dockerfile.builder
+                  file: docker/Dockerfile.builder
                   push: true
                   tags: ${{ env.IMAGE_NAME }}:docker,${{ env.IMAGE_NAME }}:docker-latest
                   cache-from: type=gha,scope=cpu-base
@@ -109,7 +109,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: Dockerfile.ml
+                  file: docker/Dockerfile.ml
                   push: true
                   tags: ${{ env.IMAGE_NAME }}:docker-ml,${{ env.IMAGE_NAME }}:docker-ml-latest
                   cache-from: type=gha,scope=ml-base
@@ -163,7 +163,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: Dockerfile.gpu
+                  file: docker/Dockerfile.gpu
                   push: true
                   tags: ${{ env.IMAGE_NAME }}:docker-gpu,${{ env.IMAGE_NAME }}:docker-gpu-latest
                   cache-from: type=gha,scope=gpu-base
