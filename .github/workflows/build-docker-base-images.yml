@@ -77,8 +77,8 @@ jobs:
         name: Build ML Base (docker-ml)
         # If CPU is being built, wait for it; otherwise run independently
         needs: build-cpu-base
-        # Run if ML should be built AND (CPU is not being built OR CPU job succeeded/was skipped)
-        if: inputs.build_ml && (inputs.build_cpu == false || always() && (needs.build-cpu-base.result == 'success' || needs.build-cpu-base.result == 'skipped'))
+        # Use always() to run even if CPU job is skipped, but check result
+        if: inputs.build_ml && (inputs.build_cpu == false || always())
 
         steps:
             - name: Checkout code
@@ -93,6 +93,15 @@ jobs:
                   username: ${{ env.DOCKER_USERNAME }}
                   password: ${{ secrets.DOCKER_TOKEN }}
 
+            - name: Check CPU base status
+              if: inputs.build_cpu
+              run: |
+                  if [ "${{ needs.build-cpu-base.result }}" != "success" ] && [ "${{ needs.build-cpu-base.result }}" != "skipped" ]; then
+                    echo "CPU base build failed, exiting"
+                    exit 1
+                  fi
+                  echo "CPU base status: ${{ needs.build-cpu-base.result }}"
+            
             - name: Pull CPU base image
               run: docker pull ${{ env.IMAGE_NAME }}:docker || true
 
@@ -122,8 +131,8 @@ jobs:
         name: Build GPU Base (docker-gpu)
         # If ML is being built, wait for it; otherwise run independently
         needs: build-ml-base
-        # Run if GPU should be built AND (ML is not being built OR ML job succeeded/was skipped)
-        if: inputs.build_gpu && (inputs.build_ml == false || always() && (needs.build-ml-base.result == 'success' || needs.build-ml-base.result == 'skipped'))
+        # Use always() to run even if ML job is skipped, but check result
+        if: inputs.build_gpu && (inputs.build_ml == false || always())
 
         steps:
             - name: Checkout code
@@ -138,6 +147,15 @@ jobs:
                   username: ${{ env.DOCKER_USERNAME }}
                   password: ${{ secrets.DOCKER_TOKEN }}
 
+            - name: Check ML base status
+              if: inputs.build_ml
+              run: |
+                  if [ "${{ needs.build-ml-base.result }}" != "success" ] && [ "${{ needs.build-ml-base.result }}" != "skipped" ]; then
+                    echo "ML base build failed, exiting"
+                    exit 1
+                  fi
+                  echo "ML base status: ${{ needs.build-ml-base.result }}"
+            
             - name: Pull ML base image
               run: docker pull ${{ env.IMAGE_NAME }}:docker-ml || true
 
