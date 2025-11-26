@@ -73,11 +73,10 @@ jobs:
                   echo "- \`${{ env.IMAGE_NAME }}:docker-latest\`" >> $GITHUB_STEP_SUMMARY
 
     build-ml-base:
-        if: inputs.build_ml
+        if: inputs.build_ml && (inputs.build_cpu == false || always() && (needs.build-cpu-base.result == 'success' || needs.build-cpu-base.result == 'skipped'))
         runs-on: ubuntu-latest
         name: Build ML Base (docker-ml)
         needs: build-cpu-base
-        if: inputs.build_ml && (inputs.build_cpu == false || always() && (needs.build-cpu-base.result == 'success' || needs.build-cpu-base.result == 'skipped'))
 
         steps:
             - name: Checkout code
