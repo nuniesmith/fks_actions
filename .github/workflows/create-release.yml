@@ -1,0 +1,36 @@
+name: Create GitHub Release
+
+on:
+  workflow_call:
+    inputs:
+      package_files:
+        description: 'Semicolon-separated list of package file paths'
+        required: true
+        type: string
+      release_name:
+        description: 'Release name (defaults to tag name)'
+        required: false
+        type: string
+      release_body:
+        description: 'Release body/notes'
+        required: false
+        type: string
+        default: 'Automated release from CI/CD'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ inputs.release_name || github.ref_name }}
+          body: ${{ inputs.release_body }}
+          files: ${{ inputs.package_files }}
+          draft: false
+          prerelease: false

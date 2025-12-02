@@ -1,325 +1,119 @@
-# FKS Actions - Reusable GitHub Actions Workflows
+# FKS Centralized CI/CD Actions
 
-Centralized GitHub Actions workflows for all FKS microservices.
+This directory contains reusable GitHub Actions workflows for building and releasing FKS applications.
 
 ## Available Workflows
 
-### 1. Python Service CI (`ci-python-service.yml`)
+### 1. `build-desktop-app.yml`
+Builds Linux desktop applications (Kotlin Multiplatform + Compose Desktop).
 
-Reusable workflow for Python-based services with the following features:
-- Python setup with caching
-- Linting (ruff), type checking (mypy), and unit tests (pytest)
-- Code coverage reporting to Codecov
-- Docker image build and health check testing
-- Automatic push to Docker Hub on main/tags
+**Location**: `.github/workflows/build-desktop-app.yml`
 
-**Usage Example:**
+**Inputs:**
+- `app_path`: Path to desktop app directory (e.g., `apps/desktop`)
+- `package_name`: Package name for artifacts (e.g., `fks-desktop`)
+- `gradle_task`: Gradle task to run (default: `:desktopApp:packageReleaseDeb :desktopApp:packageReleaseRpm`)
 
+**Outputs:**
+- `deb_file`: Path to .deb package
+- `rpm_file`: Path to .rpm package
+
+**Example Usage:**
 ```yaml
-name: CI
-
-on:
-  push:
-    branches: [main, develop]
-    tags: ["v*"]
-  pull_request:
-    branches: [main, develop]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  ci:
-    uses: nuniesmith/fks_actions/.github/workflows/ci-python-service.yml@main
+  build:
+    uses: ../../../infrastructure/actions/.github/workflows/build-desktop-app.yml@main
     with:
-      service_name: ai
-      service_port: '8007'
-      python_version: '3.12'  # optional, defaults to 3.12
-      has_dev_requirements: true  # optional, defaults to true
-      run_mypy: true  # optional, defaults to true
-    secrets:
-      docker_token: ${{ secrets.DOCKER_TOKEN }}
-      codecov_token: ${{ secrets.CODECOV_TOKEN }}  # optional
+      app_path: apps/desktop
+      package_name: fks-desktop
+      gradle_task: ":desktopApp:packageReleaseDeb :desktopApp:packageReleaseRpm"
 ```
 
-### 2. Rust Service CI (`ci-rust-service.yml`)
+### 2. `build-android-app.yml`
+Builds Android applications (APK and AAB).
 
-Reusable workflow for Rust-based services with the following features:
-- Rust toolchain setup with caching
-- Cargo tests and Clippy linting
-- Docker image build and health check testing
-- Automatic push to Docker Hub on main/tags
+**Location**: `.github/workflows/build-android-app.yml`
 
-**Usage Example:**
+**Inputs:**
+- `app_path`: Path to Android app directory (e.g., `apps/android`)
+- `package_name`: Package name for artifacts (e.g., `fks-android`)
+- `build_type`: Build type (`debug` or `release`, default: `release`)
+- `gradle_task`: Gradle task to run (default: `assembleRelease`)
 
+**Outputs:**
+- `apk_file`: Path to APK file
+- `aab_file`: Path to AAB file
+
+**Example Usage:**
 ```yaml
-name: CI
-
-on:
-  push:
-    branches: [main, develop]
-    tags: ["v*"]
-  pull_request:
-    branches: [main, develop]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  ci:
-    uses: nuniesmith/fks_actions/.github/workflows/ci-rust-service.yml@main
+  build:
+    uses: ../../../infrastructure/actions/.github/workflows/build-android-app.yml@main
     with:
-      service_name: auth
-      service_port: '8009'
-      rust_toolchain: 'stable'  # optional, defaults to stable
-      needs_openssl: true  # optional, defaults to true
-    secrets:
-      docker_token: ${{ secrets.DOCKER_TOKEN }}
+      app_path: apps/android
+      package_name: fks-android
+      build_type: release
+      gradle_task: "assembleRelease bundleRelease"
 ```
 
-## Required Secrets
+## Using in App Repositories
 
-All service repositories must have the following secret configured:
-
-- `DOCKER_TOKEN`: Docker Hub Personal Access Token for pushing images
-
-Optional secrets:
-- `CODECOV_TOKEN`: Codecov token for private repositories (not needed for public repos)
-
-## Service Configuration
-
-### Python Services
-- ai (port 8007)
-- analyze (port 8002)
-- api (port 8000)
-- app (port 8003)
-- data (port 8001)
-- monitor (port 8011)
-- ninja (port 8013)
-- portfolio (port 8010)
-- training (port 8008)
-- web (port 8000)
-
-### Rust Services
-- auth (port 8009)
-- execution (port 8005)
-- main (port 8004)
-- meta (port 8006)
-
-### Infrastructure Services
-- nginx (ports 80, 443)
-- tailscale (no exposed port)
-
-### 3. Infrastructure Service CI (`ci-infra-service.yml`)
-
-Reusable workflow for infrastructure services (nginx, tailscale, etc.) with:
-- Docker image build and push
-- Optional configuration validation
-- Simplified workflow without code testing
-
-**Usage Example:**
+### Desktop App
+The desktop app uses the centralized workflow in `.github/workflows/build-and-release.yml`:
 
 ```yaml
-name: CI
+name: Build and Release Linux Packages
 
 on:
   push:
-    branches: [main, master, develop]
-  pull_request:
-    branches: [main, master]
-
-jobs:
-  ci:
-    uses: nuniesmith/fks_actions/.github/workflows/ci-infra-service.yml@main
-    with:
-      service_name: nginx
-      service_port: 80
-      validate_config: false  # optional
-    secrets:
-      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
-```
-
-### 4. Build Docker Base Images (`build-docker-base-images.yml`)
-
-Reusable workflow for building Docker base images in sequence:
-- CPU base (`docker-latest`)
-- ML base (`docker-ml-latest`) 
-- GPU base (`docker-gpu-latest`)
-
-**Usage Example:**
-
-```yaml
-name: Build Base Images
-
-on:
-  push:
-    branches: [main, develop]
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 jobs:
   build:
-    uses: nuniesmith/fks_actions/.github/workflows/build-docker-base-images.yml@main
+    uses: ../../../infrastructure/actions/.github/workflows/build-desktop-app.yml@main
     with:
-      docker_repo: nuniesmith/fks
-      build_cpu: true
-      build_ml: true
-      build_gpu: true
-    secrets:
-      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+      app_path: apps/desktop
+      package_name: fks-desktop
+      
+  release:
+    needs: build
+    uses: ./.github/workflows/create-release.yml
+    with:
+      package_files: ${{ needs.build.outputs.deb_file }};${{ needs.build.outputs.rpm_file }}
+    if: startsWith(github.ref, 'refs/tags/')
 ```
 
-### 5. Documentation Lint (`docs-lint.yml`)
-
-Reusable workflow for linting Markdown documentation:
-- Markdownlint with auto-fix
-- Custom configuration support
-- Auto-commit fixes on push
-
-**Usage Example:**
+### Android App
+The Android app uses the centralized workflow in `.github/workflows/build-and-release.yml`:
 
 ```yaml
-name: Lint Docs
+name: Build and Release Android App
 
 on:
   push:
-    branches: [main]
-    paths: ['docs/**', '**/*.md']
-  pull_request:
-    paths: ['docs/**', '**/*.md']
-
-jobs:
-  lint:
-    uses: nuniesmith/fks_actions/.github/workflows/docs-lint.yml@main
-    with:
-      docs_path: "**/*.md"
-      auto_fix: true
-      config_file: ".markdownlint.json"
-```
-
-### 6. Documentation Build (`docs-build.yml`)
-
-Reusable workflow for building and deploying MkDocs sites:
-- MkDocs Material theme
-- Mermaid diagram support
-- Automatic GitHub Pages deployment
-
-**Usage Example:**
-
-```yaml
-name: Build Docs
-
-on:
-  push:
-    branches: [main]
-    paths: ['docs/**', 'mkdocs.yml']
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 jobs:
   build:
-    uses: nuniesmith/fks_actions/.github/workflows/docs-build.yml@main
+    uses: ../../../infrastructure/actions/.github/workflows/build-android-app.yml@main
     with:
-      python_version: "3.12"
-      mkdocs_config: "mkdocs.yml"
-      deploy_to_pages: true
+      app_path: apps/android
+      package_name: fks-android
+      
+  release:
+    needs: build
+    uses: ./.github/workflows/create-release.yml
+    with:
+      package_files: ${{ needs.build.outputs.apk_file }};${{ needs.build.outputs.aab_file }}
+    if: startsWith(github.ref, 'refs/tags/')
 ```
 
-### 7. Documentation Audit (`docs-audit.yml`)
+## Notes
 
-Reusable workflow for auditing documentation quality:
-- Custom audit script support
-- Basic metrics (file count, empty files)
-- PR comment with results
-
-**Usage Example:**
-
-```yaml
-name: Audit Docs
-
-on:
-  pull_request:
-    paths: ['docs/**']
-  workflow_dispatch:
-
-jobs:
-  audit:
-    uses: nuniesmith/fks_actions/.github/workflows/docs-audit.yml@main
-    with:
-      docs_dir: "docs"
-      audit_script: "scripts/docs/audit_files.py"
-      post_pr_comment: true
-```
-
-## Workflow Features
-
-- **Concurrency control**: Prevents duplicate workflow runs
-- **Conditional execution**: Tests run on all events; push only happens on main/tags
-- **Health checks**: Validates Docker images by starting containers and testing health endpoints
-- **Caching**: Speeds up builds with pip/cargo caching
-- **Flexible configuration**: Inputs allow customization per service
-- **Error handling**: Most test failures are non-blocking to allow image builds
-
-## Migration Guide
-
-To migrate an existing service to use these reusable workflows:
-
-1. **Delete old workflow files** in your service repo:
-   - `.github/workflows/docker-build-push.yml`
-   - `.github/workflows/tests.yml`
-
-2. **Create a single new workflow** `.github/workflows/ci.yml`:
-   ```yaml
-   name: CI
-   
-   on:
-     push:
-       branches: [main, develop]
-       tags: ["v*"]
-     pull_request:
-       branches: [main, develop]
-   
-   concurrency:
-     group: ${{ github.workflow }}-${{ github.ref }}
-     cancel-in-progress: true
-   
-   jobs:
-     ci:
-       uses: nuniesmith/fks_actions/.github/workflows/ci-python-service.yml@main
-       with:
-         service_name: YOUR_SERVICE_NAME
-         service_port: 'YOUR_PORT'
-       secrets:
-         docker_token: ${{ secrets.DOCKER_TOKEN }}
-   ```
-
-3. **Adjust inputs** based on your service requirements
-
-4. **Ensure secrets are set** in your repository settings
-
-## Benefits
-
-- ✅ Single source of truth for CI/CD logic
-- ✅ Easy updates (change once, apply everywhere)
-- ✅ Consistent behavior across all services
-- ✅ Reduced maintenance burden
-- ✅ No duplicate workflow runs
-- ✅ Faster builds with proper caching
-
-## Maintenance
-
-To update CI logic for all services:
-
-1. Make changes to the reusable workflows in this repository
-2. Push to `main` branch
-3. All services using `@main` will automatically use the updated workflows
-
-For testing changes before rolling out:
-1. Create a feature branch
-2. Update service workflows to use `@your-branch-name`
-3. Test thoroughly
-4. Merge to `main` when ready
-
-## License
-
-Same as parent FKS project.
+- All workflows use JDK 17
+- Gradle wrapper is used (must be present in app directory)
+- Artifacts are uploaded for 30 days
+- Releases are only created on version tags (v*)
+- Workflows are located in `.github/workflows/` directory within `infrastructure/actions/`
