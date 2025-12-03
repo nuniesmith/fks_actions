@@ -1,119 +1,116 @@
-# FKS Centralized CI/CD Actions
+# FKS GitHub Actions
 
-This directory contains reusable GitHub Actions workflows for building and releasing FKS applications.
+CI/CD workflows for building and deploying FKS Trading applications across all platforms.
 
-## Available Workflows
+## Repositories
 
-### 1. `build-desktop-app.yml`
-Builds Linux desktop applications (Kotlin Multiplatform + Compose Desktop).
+| Repository | Description | Build Workflow |
+|------------|-------------|----------------|
+| `fks_clients` | KMP native apps (Android, iOS, Desktop) | `build-android.yml`, `build-ios.yml`, `build-desktop.yml` |
+| `fks_web` | SvelteKit web frontend | `build-web.yml` |
 
-**Location**: `.github/workflows/build-desktop-app.yml`
+## Workflows
 
-**Inputs:**
-- `app_path`: Path to desktop app directory (e.g., `apps/desktop`)
-- `package_name`: Package name for artifacts (e.g., `fks-desktop`)
-- `gradle_task`: Gradle task to run (default: `:desktopApp:packageReleaseDeb :desktopApp:packageReleaseRpm`)
+### Individual Platform Builds
 
-**Outputs:**
-- `deb_file`: Path to .deb package
-- `rpm_file`: Path to .rpm package
+#### `build-android.yml`
+- Builds Android APK (debug + release)
+- Runs unit tests
+- Uploads artifacts
 
-**Example Usage:**
-```yaml
-jobs:
-  build:
-    uses: ../../../infrastructure/actions/.github/workflows/build-desktop-app.yml@main
-    with:
-      app_path: apps/desktop
-      package_name: fks-desktop
-      gradle_task: ":desktopApp:packageReleaseDeb :desktopApp:packageReleaseRpm"
+#### `build-ios.yml`
+- Builds iOS framework from shared KMP code
+- Archives iOS app (requires Xcode)
+- Runs iOS simulator tests
+
+#### `build-desktop.yml`
+- Builds for Linux (DEB, RPM)
+- Builds for macOS (DMG)
+- Builds for Windows (MSI)
+- Runs desktop tests
+
+#### `build-web.yml`
+- Builds SvelteKit app
+- Runs tests and linting
+- Deploys to Netlify (preview + production)
+
+### Unified Build
+
+#### `build-all.yml`
+Manual workflow to build all platforms and create a release:
+1. Runs shared KMP tests
+2. Builds Android, iOS, Desktop (all OS), Web in parallel
+3. Creates GitHub release with all artifacts
+
+## Setup
+
+### Required Secrets
+
+For `fks_clients` repository:
+```
+SIGNING_KEY_ALIAS       # Android signing key alias
+SIGNING_KEY_PASSWORD    # Android signing key password
+SIGNING_STORE_PASSWORD  # Android keystore password
 ```
 
-### 2. `build-android-app.yml`
-Builds Android applications (APK and AAB).
-
-**Location**: `.github/workflows/build-android-app.yml`
-
-**Inputs:**
-- `app_path`: Path to Android app directory (e.g., `apps/android`)
-- `package_name`: Package name for artifacts (e.g., `fks-android`)
-- `build_type`: Build type (`debug` or `release`, default: `release`)
-- `gradle_task`: Gradle task to run (default: `assembleRelease`)
-
-**Outputs:**
-- `apk_file`: Path to APK file
-- `aab_file`: Path to AAB file
-
-**Example Usage:**
-```yaml
-jobs:
-  build:
-    uses: ../../../infrastructure/actions/.github/workflows/build-android-app.yml@main
-    with:
-      app_path: apps/android
-      package_name: fks-android
-      build_type: release
-      gradle_task: "assembleRelease bundleRelease"
+For `fks_web` repository:
+```
+NETLIFY_AUTH_TOKEN      # Netlify authentication token
+NETLIFY_SITE_ID         # Netlify site ID
 ```
 
-## Using in App Repositories
+### Required Variables
 
-### Desktop App
-The desktop app uses the centralized workflow in `.github/workflows/build-and-release.yml`:
-
-```yaml
-name: Build and Release Linux Packages
-
-on:
-  push:
-    tags:
-      - "v*"
-
-jobs:
-  build:
-    uses: ../../../infrastructure/actions/.github/workflows/build-desktop-app.yml@main
-    with:
-      app_path: apps/desktop
-      package_name: fks-desktop
-      
-  release:
-    needs: build
-    uses: ./.github/workflows/create-release.yml
-    with:
-      package_files: ${{ needs.build.outputs.deb_file }};${{ needs.build.outputs.rpm_file }}
-    if: startsWith(github.ref, 'refs/tags/')
+For `fks_web` repository:
+```
+PUBLIC_API_URL          # API gateway URL
+PUBLIC_AUTH_URL         # Auth service URL
+PUBLIC_WS_URL           # WebSocket URL
 ```
 
-### Android App
-The Android app uses the centralized workflow in `.github/workflows/build-and-release.yml`:
+## Usage
 
-```yaml
-name: Build and Release Android App
+### Automatic Builds
+Workflows trigger automatically on push/PR to relevant paths.
 
-on:
-  push:
-    tags:
-      - "v*"
+### Manual Release
+1. Go to Actions > "Build All Platforms"
+2. Click "Run workflow"
+3. Enter version number (e.g., "1.0.0")
+4. Wait for all builds to complete
+5. Review and publish the draft release
 
-jobs:
-  build:
-    uses: ../../../infrastructure/actions/.github/workflows/build-android-app.yml@main
-    with:
-      app_path: apps/android
-      package_name: fks-android
-      
-  release:
-    needs: build
-    uses: ./.github/workflows/create-release.yml
-    with:
-      package_files: ${{ needs.build.outputs.apk_file }};${{ needs.build.outputs.aab_file }}
-    if: startsWith(github.ref, 'refs/tags/')
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    FKS Trading Apps                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Android   │  │     iOS     │  │       Desktop       │  │
+│  │    (APK)    │  │ (Framework) │  │ (DEB/RPM/DMG/MSI)   │  │
+│  └──────┬──────┘  └──────┬──────┘  └──────────┬──────────┘  │
+│         │                │                     │              │
+│         └────────────────┼─────────────────────┘              │
+│                          │                                    │
+│                 ┌────────▼────────┐                          │
+│                 │  Shared (KMP)   │                          │
+│                 │  - API Client   │                          │
+│                 │  - ViewModels   │                          │
+│                 │  - UI Screens   │                          │
+│                 └─────────────────┘                          │
+│                                                              │
+├─────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                  Web (SvelteKit)                     │    │
+│  │  - Signal Command Center                             │    │
+│  │  - Portfolio Dashboard                               │    │
+│  │  - Gamified Tasks                                    │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Notes
+## License
 
-- All workflows use JDK 17
-- Gradle wrapper is used (must be present in app directory)
-- Artifacts are uploaded for 30 days
-- Releases are only created on version tags (v*)
-- Workflows are located in `.github/workflows/` directory within `infrastructure/actions/`
+MIT License - see LICENSE file

@@ -1,0 +1,110 @@
+name: Build iOS App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'shared/**'
+      - '.github/workflows/build-ios.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'shared/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+          
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+          
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app
+        
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Build iOS Framework
+        run: ./gradlew :shared:linkReleaseFrameworkIosArm64
+        
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-
+          
+      - name: Install CocoaPods
+        run: |
+          cd ios/FKSTrading
+          pod install --repo-update
+        continue-on-error: true
+        
+      - name: Build iOS App (Archive)
+        run: |
+          cd ios/FKSTrading
+          xcodebuild archive \
+            -workspace FKSTrading.xcworkspace \
+            -scheme FKSTrading \
+            -configuration Release \
+            -archivePath build/FKSTrading.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+        continue-on-error: true
+        
+      - name: Upload iOS Framework
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-framework
+          path: shared/build/bin/iosArm64/releaseFramework/
+          
+      - name: Upload iOS Archive
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ios-archive
+          path: ios/FKSTrading/build/*.xcarchive
+
+  test:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+          
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+          
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+        
+      - name: Run iOS Unit Tests
+        run: ./gradlew :shared:iosSimulatorArm64Test
+        
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-test-results
+          path: '**/build/reports/tests/'

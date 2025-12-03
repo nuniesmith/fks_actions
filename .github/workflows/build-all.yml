@@ -1,0 +1,176 @@
+name: Build All Platforms
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for release'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  # Build shared KMP module tests
+  shared-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - run: chmod +x gradlew
+      - run: ./gradlew :shared:allTests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-test-results
+          path: '**/build/reports/tests/'
+
+  # Android Build
+  android:
+    needs: shared-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - run: chmod +x gradlew
+      - run: ./gradlew :android:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: android/build/outputs/apk/release/*.apk
+
+  # Desktop Linux
+  desktop-linux:
+    needs: shared-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - run: chmod +x gradlew
+      - run: ./gradlew :desktop:packageDeb :desktop:packageRpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: |
+            desktop/build/compose/binaries/main/deb/*.deb
+            desktop/build/compose/binaries/main/rpm/*.rpm
+
+  # Desktop macOS
+  desktop-macos:
+    needs: shared-tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - run: chmod +x gradlew
+      - run: ./gradlew :desktop:packageDmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: desktop/build/compose/binaries/main/dmg/*.dmg
+
+  # Desktop Windows
+  desktop-windows:
+    needs: shared-tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - run: ./gradlew :desktop:packageMsi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: desktop/build/compose/binaries/main/msi/*.msi
+
+  # iOS Framework
+  ios:
+    needs: shared-tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_clients
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+      - run: sudo xcode-select -s /Applications/Xcode_15.2.app
+      - run: chmod +x gradlew
+      - run: ./gradlew :shared:linkReleaseFrameworkIosArm64 :shared:linkReleaseFrameworkIosX64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-frameworks
+          path: shared/build/bin/*/releaseFramework/
+
+  # Web Frontend
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nuniesmith/fks_web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/
+
+  # Create Release
+  release:
+    needs: [android, desktop-linux, desktop-macos, desktop-windows, ios, web]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: FKS Trading v${{ github.event.inputs.version }}
+          draft: true
+          files: |
+            artifacts/android-release/*.apk
+            artifacts/desktop-linux/*.deb
+            artifacts/desktop-linux/*.rpm
+            artifacts/desktop-macos/*.dmg
+            artifacts/desktop-windows/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
